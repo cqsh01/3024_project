@@ -1,0 +1,112 @@
+#the code of logistics regression model for DC228455
+import torch
+import torchvision.transforms as transforms
+import torchvision.datasets as datasets
+import matplotlib.pyplot as plt
+from torch.utils.data import DataLoader
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, ConfusionMatrixDisplay, roc_curve, auc, precision_recall_curve, average_precision_score
+from sklearn.preprocessing import label_binarize
+
+# 数据转换和增强
+transform = transforms.Compose([
+    transforms.RandomCrop(32, padding=4),
+    transforms.RandomHorizontalFlip(),
+    transforms.ToTensor(),
+    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+])
+
+# 下载SVHN数据集
+train_dataset = datasets.SVHN(root='./data', split='train', download=True, transform=transform)
+test_dataset = datasets.SVHN(root='./data', split='test', download=True, transform=transform)
+train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
+
+# 准备数据
+X_train = train_loader.dataset.data.reshape(-1, 32*32*3) / 255.0  # Normalize to [0, 1]
+y_train = train_loader.dataset.labels
+X_test = test_loader.dataset.data.reshape(-1, 32*32*3) / 255.0   # Normalize to [0, 1]
+y_test = test_loader.dataset.labels
+
+# 训练逻辑回归模型
+clf = LogisticRegression(solver='lbfgs', max_iter=2000)
+clf.fit(X_train[:5000], y_train[:5000])  # Use a subset for faster training (adjust as needed)
+
+# 计算训练和测试损失
+train_loss_lr = []
+test_loss_lr = []
+num_epochs = 20
+
+for epoch in range(num_epochs):
+    clf.fit(X_train[:5000], y_train[:5000])  # Use a subset for faster training (adjust as needed)
+    
+    # Training loss
+    y_train_pred_lr_proba = clf.predict_proba(X_train[:5000])
+    train_loss_lr.append(-np.mean(np.log(y_train_pred_lr_proba[np.arange(len(y_train[:5000])), y_train[:5000]])))
+    
+    # Testing loss
+    y_test_pred_lr_proba = clf.predict_proba(X_test)
+    test_loss_lr.append(-np.mean(np.log(y_test_pred_lr_proba[np.arange(len(y_test)), y_test])))
+
+# 绘制训练和测试损失曲线
+plt.figure(figsize=(5, 5))
+plt.plot(range(num_epochs), train_loss_lr, label="Training Loss (Logistic Regression)")
+plt.plot(range(num_epochs), test_loss_lr, label="Testing Loss (Logistic Regression)")
+plt.xlabel("Epochs")
+plt.ylabel("Loss")
+plt.title("Training and Testing Loss Curves (Logistic Regression)")
+plt.legend()
+plt.show()
+
+# 评估逻辑回归模型
+y_pred_lr = clf.predict(X_test)
+y_score_lr = clf.predict_proba(X_test)
+accuracy_lr = accuracy_score(y_test, y_pred_lr)
+print(f"Logistic Regression Accuracy: {accuracy_lr:.2f}")
+
+# Precision, Recall and F1 Score per class
+precision_lr = precision_score(y_test, y_pred_lr, average=None)
+recall_lr = recall_score(y_test, y_pred_lr, average=None)
+f1_lr = f1_score(y_test, y_pred_lr, average=None)
+for i in range(10):
+    print(f"Class {i}: Precision: {precision_lr[i]:.2f}, Recall: {recall_lr[i]:.2f}, F1 Score: {f1_lr[i]:.2f}")
+
+# Confusion Matrix
+cm_lr = confusion_matrix(y_test, y_pred_lr)
+print("Logistic Regression Confusion Matrix:")
+print(cm_lr)
+disp_lr = ConfusionMatrixDisplay(confusion_matrix=cm_lr)
+disp_lr.plot(cmap=plt.cm.Blues)
+plt.title('Logistic Regression Confusion Matrix')
+plt.show()
+
+# ROC Curve
+y_test_bin_lr = label_binarize(y_test, classes=range(10))
+roc_auc_lr = dict()
+for i in range(10):
+    fpr_lr, tpr_lr, _ = roc_curve(y_test_bin_lr[:, i], y_score_lr[:, i])
+    roc_auc_lr[i] = auc(fpr_lr, tpr_lr)
+    print(f"Class {i}: Logistic Regression ROC AUC: {roc_auc_lr[i]:.2f}")
+
+# Plot ROC curves
+for i in range(10):
+    fpr_lr, tpr_lr, _ = roc_curve(y_test_bin_lr[:, i], y_score_lr[:, i])
+    plt.plot(fpr_lr, tpr_lr, label=f'Class {i} (AUC={roc_auc_lr[i]:.2f})')
+plt.plot([0, 1], [0, 1], 'k--')  # Diagonal line
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Logistic Regression ROC Curve')
+plt.legend(loc='best')
+plt.show()
+
+# Precision-Recall Curve
+for i in range(10):
+    precision_i, recall_i, _ = precision_recall_curve(y_test_bin_lr[:, i], y_score_lr[:, i])
+    average_precision = average_precision_score(y_test_bin_lr[:, i], y_score_lr[:, i])
+    plt.step(recall_i, precision_i, where='post', label=f'Class {i} (AP={average_precision:.2f})')
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.title('Precision-Recall Curve')
+plt.legend(loc='best')
+plt.show()
